@@ -1,9 +1,9 @@
 package ru.mmtr.at.hbase.interfaces;
 
 import lombok.SneakyThrows;
+import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
 import ru.mmtr.at.hbase.connection.ConnectionFactory;
 
@@ -91,5 +91,16 @@ public class TableOperations {
             String columnName
     ) {
         return getSingleQualifierRawData(getQualifiersRawData(c, tableName, rowKeyName, columnFamilyName), columnName);
+    }
+
+
+    @SneakyThrows
+    public static void createTable(Connection c,
+                                   String tableName,
+                                   List<ColumnFamilyDescriptor> columnFamilies) {
+
+        TableDescriptorBuilder tableBuilder = TableDescriptorBuilder.newBuilder(TableName.valueOf(tableName));
+        tableBuilder.setColumnFamilies(columnFamilies);
+        c.getAdmin().createTable(tableBuilder.build());
     }
 }
