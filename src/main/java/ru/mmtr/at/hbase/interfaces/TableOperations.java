@@ -1,99 +1,26 @@
 package ru.mmtr.at.hbase.interfaces;
 
 import lombok.SneakyThrows;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
 import ru.mmtr.at.hbase.connection.ConnectionFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
+//todo DI connection
 public class TableOperations {
 
-    /***
-     *
+    /****
      * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
      * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
-     * @return все значения Qualifier, отсортированные по timestamp от новых к старым. K - Timestamp (UNIX Time), V - данные в виде Byte[]
-     */
-
-    @SneakyThrows
-    public static Map<Long, byte[]> getAllVersionsFromTable(
-            Connection c,
-            String tableName,
-            String rowKeyName,
-            String columnFamilyName,
-            String columnName
-    ) {
-        return new HashMap<>(getQualifiersRawData(c, tableName, rowKeyName, columnFamilyName).get(Bytes.toBytes(columnName)));
-    }
-
-    /***
-     *  *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
+     * @param columnFamilies описание columnFamily {@link ColumnFamilyDescriptorBuilder}
      *
-     * @return содержимое пересечения RowKey и ColumnFamily (все Columns\Qualifier)
-     */
-
-    @SneakyThrows
-    private static NavigableMap<byte[], NavigableMap<Long, byte[]>> getQualifiersRawData(
-            Connection c,
-            String tableName,
-            String rowKeyName,
-            String columnFamilyName
-    ) {
-
-        Get getQuery = new Get(Bytes.toBytes(rowKeyName));
-        getQuery.readAllVersions();
-
-        NavigableMap<byte[], NavigableMap<byte[], NavigableMap<Long, byte[]>>> allVersions =
-                c.getTable(TableName.valueOf(tableName)).get(getQuery).getMap();
-
-        return allVersions.get(Bytes.toBytes(columnFamilyName));
-    }
-
-    /***
      *
-     * @param qualifiers содержимое пересечения RowKey и ColumnFamily (все Columns\Qualifier)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
-     * @return все значения Qualifier, отсортированные по timestamp от новых к старым. K - Timestamp (UNIX Time), V - данные в виде Byte[]
      */
-    @SneakyThrows
-    private static NavigableMap<Long, byte[]> getSingleQualifierRawData(
-            NavigableMap<byte[], NavigableMap<Long, byte[]>> qualifiers,
-            String columnName
-    ) {
-        return qualifiers.get(Bytes.toBytes(columnName));
-    }
-
-    /***
-     *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
-     * @return все значения Qualifier, отсортированные по timestamp от новых к старым. K - Timestamp (UNIX Time), V - данные в виде Byte[]
-     */
-    @SneakyThrows
-    private static NavigableMap<Long, byte[]> getSingleQualifierRawData(
-            Connection c,
-            String tableName,
-            String rowKeyName,
-            String columnFamilyName,
-            String columnName
-    ) {
-        return getSingleQualifierRawData(getQualifiersRawData(c, tableName, rowKeyName, columnFamilyName), columnName);
-    }
-
-
     @SneakyThrows
     public static void createTable(Connection c,
                                    String tableName,
@@ -102,5 +29,100 @@ public class TableOperations {
         TableDescriptorBuilder tableBuilder = TableDescriptorBuilder.newBuilder(TableName.valueOf(tableName));
         tableBuilder.setColumnFamilies(columnFamilies);
         c.getAdmin().createTable(tableBuilder.build());
+    }
+
+
+    /***
+     *
+     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     * @param tableName имя таблицы в БД
+     * @param columnFamilies описание columnFamily {@link ColumnFamilyDescriptorBuilder}
+     */
+
+    @SneakyThrows
+    public static void addColumnFamily(Connection c,
+                                    String tableName,
+                                    List<ColumnFamilyDescriptor> columnFamilies) {
+
+        if (!tableExist(c, tableName))
+            throw new RuntimeException("Table " + tableName + " not exist");
+
+        Admin a = c.getAdmin();
+        //@SneakyThrows don't work for forEach() :(
+        for (ColumnFamilyDescriptor colFamDesc : columnFamilies) {
+            a.addColumnFamily(TableName.valueOf(tableName), colFamDesc);
+        }
+    }
+
+    /***
+     *
+     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     * @param tableName имя таблицы в БД
+     * @return Лист с описанием всех columnFamily{@link ColumnFamilyDescriptor} в таблице
+     */
+
+    @SneakyThrows
+    public static List<ColumnFamilyDescriptor> getTableColumnFamilies(Connection c, String tableName) {
+
+        return Arrays.asList(c.getAdmin().getDescriptor(TableName.valueOf(tableName)).getColumnFamilies());
+    }
+
+    /***
+     *
+     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     * @param tableName имя таблицы в БД
+     * @return булевое значение существует ли таблица
+     */
+    @SneakyThrows
+    public static boolean tableExist(Connection c,
+                                     String tableName) {
+        return c.getAdmin().tableExists(TableName.valueOf(tableName));
+    }
+
+    /***
+     *
+     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     * @param tableName имя таблицы в БД
+     * @param columnFamilyName имя семейства столбцов (Column Family)
+     *
+     * @return булевое значение существует ли имя семейства столбцов (Column Family) в таблице
+     */
+    public static boolean checkFamilyInTable(Connection c,
+                                             String tableName,
+                                             String columnFamilyName) {
+
+        List<ColumnFamilyDescriptor> arr = getTableColumnFamilies(c, tableName);
+        return arr.stream().anyMatch(colDesc -> colDesc.getNameAsString().equals(columnFamilyName));
+    }
+
+    /***
+     *
+     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     * @param tableName имя таблицы в БД
+     * @param saveColumnFamilies сохранить семейства столбцов (Column Family)?
+     */
+    public static void purgeTable(Connection c,
+                                  String tableName,
+                                  boolean saveColumnFamilies) {
+
+        List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
+
+        if (saveColumnFamilies) {
+            columnFamilyDescriptors = getTableColumnFamilies(c, tableName);
+        }
+        deleteTable(c, tableName);
+        createTable(c, tableName, columnFamilyDescriptors);
+    }
+
+    /***
+     *
+     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     * @param tableName имя таблицы в БД
+     */
+
+    @SneakyThrows
+    public static void deleteTable(Connection c,
+                                   String tableName) {
+        c.getAdmin().deleteTable(TableName.valueOf(tableName));
     }
 }
