@@ -1,41 +1,45 @@
 package ru.mmtr.at.hbase.interfaces;
 
+import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
-import ru.mmtr.at.hbase.connection.ConnectionFactory;
+import ru.mmtr.at.hbase.dataHelpers.ColumnLink;
+import ru.mmtr.at.hbase.dataHelpers.ColumnLinkBuilder;
 
 import java.util.*;
 
 //todo method's params container class
-//todo DI connection
+@AllArgsConstructor
 public class EntryOperations {
+
+    Connection connection; //коннект к бд. смотри ConnectionFactory#getConnection()
 
     /***
      *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
+     *  tableName имя таблицы в БД
+     *  rowKeyName первичный ключ таблицы
+     *  columnFamilyName имя семейства столбцов (Column Family)
+     *  columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
      * @return все значения Qualifier, отсортированные по timestamp от новых к старым. K - Timestamp (UNIX Time), V - данные в виде Byte[]
      */
 
     @SneakyThrows
-    public static Map<Long, byte[]> getAllVersionsFromTable(
-            Connection c,
-            String tableName,
-            String rowKeyName,
-            String columnFamilyName,
-            String columnName
+    public Map<Long, byte[]> getAllVersionsFromTable(
+            ColumnLink link
     ) {
-        return new HashMap<>(getQualifiersRawData(c, tableName, rowKeyName, columnFamilyName).get(Bytes.toBytes(columnName)));
+        return new HashMap<>(
+                getQualifiersRawData(
+                        link.getTableName(),
+                        link.getRowKeyName(),
+                        link.getColumnFamilyName()
+                ).get(Bytes.toBytes(link.getColumnName()))
+        );
     }
 
     /***
-     *  *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
+     *
      * @param tableName имя таблицы в БД
      * @param rowKeyName первичный ключ таблицы
      * @param columnFamilyName имя семейства столбцов (Column Family)
@@ -44,8 +48,7 @@ public class EntryOperations {
      */
 
     @SneakyThrows
-    private static NavigableMap<byte[], NavigableMap<Long, byte[]>> getQualifiersRawData(
-            Connection c,
+    private NavigableMap<byte[], NavigableMap<Long, byte[]>> getQualifiersRawData(
             String tableName,
             String rowKeyName,
             String columnFamilyName
@@ -55,7 +58,7 @@ public class EntryOperations {
         getQuery.readAllVersions();
 
         NavigableMap<byte[], NavigableMap<byte[], NavigableMap<Long, byte[]>>> allVersions =
-                c.getTable(TableName.valueOf(tableName)).get(getQuery).getMap();
+                connection.getTable(TableName.valueOf(tableName)).get(getQuery).getMap();
 
         return allVersions.get(Bytes.toBytes(columnFamilyName));
     }
@@ -67,7 +70,7 @@ public class EntryOperations {
      * @return все значения Qualifier, отсортированные по timestamp от новых к старым. K - Timestamp (UNIX Time), V - данные в виде Byte[]
      */
     @SneakyThrows
-    private static NavigableMap<Long, byte[]> getSingleQualifierRawData(
+    private NavigableMap<Long, byte[]> getSingleQualifierRawData(
             NavigableMap<byte[], NavigableMap<Long, byte[]>> qualifiers,
             String columnName
     ) {
@@ -75,45 +78,31 @@ public class EntryOperations {
     }
 
     /***
-     *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
+     * @param columnLink данные для поиска столбца {@link ColumnLinkBuilder}
      * @return все значения Qualifier, отсортированные по timestamp от новых к старым. K - Timestamp (UNIX Time), V - данные в виде Byte[]
      */
     @SneakyThrows
-    public static NavigableMap<Long, byte[]> getSingleQualifierRawData(
-            Connection c,
-            String tableName,
-            String rowKeyName,
-            String columnFamilyName,
-            String columnName
+    public NavigableMap<Long, byte[]> getSingleQualifierRawData(
+            ColumnLink columnLink
     ) {
-        return getSingleQualifierRawData(getQualifiersRawData(c, tableName, rowKeyName, columnFamilyName), columnName);
+        return getSingleQualifierRawData(
+                getQualifiersRawData(
+                        columnLink.getTableName(),
+                        columnLink.getRowKeyName(),
+                        columnLink.getColumnFamilyName()),
+                columnLink.getColumnName());
     }
 
     /***
-     *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
+     * @param columnLink данные для поиска столбца {@link ColumnLinkBuilder}
      * @param data данные для добавления в виде List<byte[]>.
      */
     @SneakyThrows
-    public static void addDataToTable(Connection c,
-                                      String tableName,
-                                      String rowKeyName,
-                                      String columnFamilyName,
-                                      String columnName,
-                                      List<byte[]> data) {
-        Table table = c.getTable(TableName.valueOf(tableName));
-        Put p = new Put(Bytes.toBytes(rowKeyName));
+    public void addDataToTable(ColumnLink columnLink, List<byte[]> data) {
+        Table table = connection.getTable(TableName.valueOf(columnLink.getTableName()));
+        Put p = new Put(Bytes.toBytes(columnLink.getRowKeyName()));
         for (byte[] val : data) {
-            p.addColumn(Bytes.toBytes(columnFamilyName), Bytes.toBytes(columnName), val);
+            p.addColumn(Bytes.toBytes(columnLink.getColumnFamilyName()), Bytes.toBytes(columnLink.getColumnName()), val);
             table.put(p);
         }
         table.put(p);
@@ -121,80 +110,62 @@ public class EntryOperations {
 
     /***
      *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
+     * @param columnLink данные для поиска столбца {@link ColumnLinkBuilder}
      * @param data данные для добавления
      *
      *
      */
     @SneakyThrows
-    public static void addDataToTable(Connection c,
-                                      String tableName,
-                                      String rowKeyName,
-                                      String columnFamilyName,
-                                      String columnName,
-                                      Map<Long, byte[]> data) {
-        Table table = c.getTable(TableName.valueOf(tableName));
-        Put p = new Put(Bytes.toBytes(rowKeyName));
+    public void addDataToTable(ColumnLink columnLink,
+                               Map<Long, byte[]> data) {
+        Table table = connection.getTable(TableName.valueOf(columnLink.getTableName()));
+        Put p = new Put(Bytes.toBytes(columnLink.getRowKeyName()));
         data.forEach((timestamp, value) ->
-                p.addColumn(Bytes.toBytes(columnFamilyName), Bytes.toBytes(columnName), timestamp, value)
+                p.addColumn(
+                        Bytes.toBytes(columnLink.getColumnFamilyName()),
+                        Bytes.toBytes(columnLink.getColumnName()),
+                        timestamp,
+                        value)
         );
         table.put(p);
     }
 
     /***
      *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
      * @param timestamp временная метка записи
-     *
+     * @param columnLink данные для поиска столбца {@link ColumnLinkBuilder}
+
      * Удаляет запись с указанной временной меткой
      */
     @SneakyThrows
-    public static void deleteColumn(Connection c,
-                                    String tableName,
-                                    String rowKeyName,
-                                    String columnFamilyName,
-                                    String columnName,
-                                    Long timestamp){
+    public void deleteColumn(ColumnLink columnLink,
+                             Long timestamp) {
 
-        Table table = c.getTable(TableName.valueOf(tableName));
-        Delete deleteOperation = new Delete(Bytes.toBytes(rowKeyName));
+        Table table = connection.getTable(TableName.valueOf(columnLink.getTableName()));
+        Delete deleteOperation = new Delete(Bytes.toBytes(columnLink.getRowKeyName()));
 
-        deleteOperation.addColumn(Bytes.toBytes(columnFamilyName),Bytes.toBytes(columnName),timestamp);
+        deleteOperation.addColumn(
+                Bytes.toBytes(columnLink.getColumnFamilyName()),
+                Bytes.toBytes(columnLink.getColumnName()),
+                timestamp);
         table.delete(deleteOperation);
 
     }
 
     /***
      *
-     * @param c коннект к бд. смотри {@link ConnectionFactory#getConnection()}
-     * @param tableName имя таблицы в БД
-     * @param rowKeyName первичный ключ таблицы
-     * @param columnFamilyName имя семейства столбцов (Column Family)
-     * @param columnName имя столбца (параметра) ВНУТРИ семества столбцов (Column\Qualifier)
-     *
+     * @param columnLink данные для поиска столбца {@link ColumnLinkBuilder}
      * Удаляет самую свежую запись
      *
      */
 
     @SneakyThrows
-    public static void deleteColumn(Connection c,
-                                    String tableName,
-                                    String rowKeyName,
-                                    String columnFamilyName,
-                                    String columnName){
+    public void deleteColumn(ColumnLink columnLink) {
 
-        Table table = c.getTable(TableName.valueOf(tableName));
-        Delete deleteOperation = new Delete(Bytes.toBytes(rowKeyName));
+        Table table = connection.getTable(TableName.valueOf(columnLink.getTableName()));
+        Delete deleteOperation = new Delete(Bytes.toBytes(columnLink.getRowKeyName()));
 
-        deleteOperation.addColumn(Bytes.toBytes(columnFamilyName),Bytes.toBytes(columnName));
+        deleteOperation.addColumn(Bytes.toBytes(columnLink.getColumnFamilyName()), Bytes.toBytes(columnLink.getColumnName()));
         table.delete(deleteOperation);
     }
 

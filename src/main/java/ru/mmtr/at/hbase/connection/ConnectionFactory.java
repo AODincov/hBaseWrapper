@@ -21,8 +21,6 @@ public class ConnectionFactory {
         conf.set("hbase.rpc.timeout", "10000");  // default 60 secs
         conf.set("hbase.rpc.shortoperation.timeout", "5000"); // default 10 secs
 
-
         return org.apache.hadoop.hbase.client.ConnectionFactory.createConnection(conf);
-
     }
 }
