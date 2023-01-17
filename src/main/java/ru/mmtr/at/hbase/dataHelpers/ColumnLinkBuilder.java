@@ -22,10 +22,10 @@ public class ColumnLinkBuilder {
 
     public ColumnLink build() {
 
-        Assertions.assertNotNull(tableName);
-        Assertions.assertNotNull(rowKeyName);
-        Assertions.assertNotNull(columnFamilyName);
-        Assertions.assertNotNull(columnName);
+        assert tableName != null;
+        assert rowKeyName != null;
+        assert columnFamilyName != null;
+        assert columnName != null;
 
         return new ColumnLink(tableName, rowKeyName, columnFamilyName, columnName);
     }
